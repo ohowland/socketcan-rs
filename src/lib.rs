@@ -373,16 +373,17 @@ impl CanSocket {
         let frame = self.read_frame()?;
 
         let mut ts = MaybeUninit::<timespec>::uninit();
-        let rval = unsafe { 
+        let err = unsafe { 
             libc::ioctl(self.fd, SIOCGSTAMPNS as c_ulong, ts.as_mut_ptr())
         };
+
+        if err == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
         let ts = unsafe { 
             ts.assume_init() 
         };
-
-        if rval == -1 {
-            return Err(io::Error::last_os_error());
-        }
 
         Ok((frame, util::system_time_from_timespec(ts)))
     }
