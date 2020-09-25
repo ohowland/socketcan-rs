@@ -50,7 +50,7 @@ extern crate itertools;
 mod err;
 mod util;
 
-pub use err::{CanError, CanErrorDecodingFailure};
+pub use errors::{CanError, CanErrorDecodingFailure};
 
 #[cfg(test)]
 mod tests;
@@ -373,9 +373,11 @@ impl CanSocket {
         let frame = self.read_frame()?;
 
         let mut ts = MaybeUninit::<timespec>::uninit();
-        let rval = unsafe {
-            // we initialize ts calling ioctl, passing this responsibility on
-            libc::ioctl(self.fd, SIOCGSTAMPNS as c_ulong, &mut ts as *mut timespec)
+        let rval = unsafe { 
+            libc::ioctl(self.fd, SIOCGSTAMPNS as c_ulong, ts.as_mut_ptr())
+        };
+        let ts = unsafe { 
+            ts.assume_init() 
         };
 
         if rval == -1 {
