@@ -47,7 +47,7 @@ extern crate libc;
 extern crate nix;
 extern crate itertools;
 
-mod err;
+mod errors;
 mod util;
 
 pub use errors::{CanError, CanErrorDecodingFailure};
@@ -55,9 +55,9 @@ pub use errors::{CanError, CanErrorDecodingFailure};
 #[cfg(test)]
 mod tests;
 
-use libc::{c_int, c_short, c_void, c_uint, c_ulong, socket, SOCK_RAW, close, bind, sockaddr, read,
-           write, SOL_SOCKET, SO_RCVTIMEO, timespec, timeval, EINPROGRESS, SO_SNDTIMEO, time_t,
-           suseconds_t, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
+//use libc::{c_int, c_short, c_void, c_uint, c_ulong, socket, SOCK_RAW, close, bind, sockaddr, read,
+//           write, SOL_SOCKET, SO_RCVTIMEO, timespec, timeval, EINPROGRESS, SO_SNDTIMEO, time_t,
+//           suseconds_t, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
 
 use itertools::Itertools;
 
@@ -111,25 +111,25 @@ impl<E: fmt::Debug> ShouldRetry for io::Result<E> {
 }
 
 // constants stolen from C headers
-const AF_CAN: c_int = 29;
-const PF_CAN: c_int = 29;
-const CAN_RAW: c_int = 1;
-const SOL_CAN_BASE: c_int = 100;
-const SOL_CAN_RAW: c_int = SOL_CAN_BASE + CAN_RAW;
-const CAN_RAW_FILTER: c_int = 1;
-const CAN_RAW_ERR_FILTER: c_int = 2;
-const CAN_RAW_LOOPBACK: c_int = 3;
-const CAN_RAW_RECV_OWN_MSGS: c_int = 4;
+const AF_CAN:                   libc::c_int = 29;
+const PF_CAN:                   libc::c_int = 29;
+const CAN_RAW:                  libc::c_int = 1;
+const SOL_CAN_BASE:             libc::c_int = 100;
+const SOL_CAN_RAW:              libc::c_int = SOL_CAN_BASE + CAN_RAW;
+const CAN_RAW_FILTER:           libc::c_int = 1;
+const CAN_RAW_ERR_FILTER:       libc::c_int = 2;
+const CAN_RAW_LOOPBACK:         libc::c_int = 3;
+const CAN_RAW_RECV_OWN_MSGS:    libc::c_int = 4;
+const CAN_RAW_JOIN_FILTERS:     libc::c_int = 6;
 // unused:
 // const CAN_RAW_FD_FRAMES: c_int = 5;
-const CAN_RAW_JOIN_FILTERS: c_int = 6;
 
 
 // get timestamp in a struct timeval (us accuracy)
 // const SIOCGSTAMP: c_int = 0x8906;
 
-// get timestamp in a struct timespec (ns accuracy)
-const SIOCGSTAMPNS: c_int = 0x8907;
+// get timestamp from ioctl in a struct timespec (ns accuracy)
+const SIOCGSTAMPNS: libc::c_int = 0x8907;
 
 /// if set, indicate 29 bit extended format
 pub const EFF_FLAG: u32 = 0x80000000;
@@ -373,11 +373,11 @@ impl CanSocket {
         let frame = self.read_frame()?;
 
         let mut ts = MaybeUninit::<timespec>::uninit();
-        let err = unsafe { 
+        let r = unsafe { 
             libc::ioctl(self.fd, SIOCGSTAMPNS as c_ulong, ts.as_mut_ptr())
         };
 
-        if err == -1 {
+        if r == -1 {
             return Err(io::Error::last_os_error());
         }
 
@@ -398,12 +398,12 @@ impl CanSocket {
         // a comparison
         // debug!("Sending: {:?}", frame);
 
-        let write_rv = unsafe {
+        let r = unsafe {
             let frame_ptr = frame as *const CanFrame;
             write(self.fd, frame_ptr as *const c_void, size_of::<CanFrame>())
         };
 
-        if write_rv as usize != size_of::<CanFrame>() {
+        if r as usize != size_of::<CanFrame>() {
             return Err(io::Error::last_os_error());
         }
 
