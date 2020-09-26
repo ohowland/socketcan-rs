@@ -124,3 +124,23 @@ if r < 0 {
   return some binding error
 }
 ```
+
+## Methods on CanSocket
+### Set nonblocking
+Non-blocking is set using file status flags.
+`libc::fcntl(fd, cmd)`
+
+the pattern is to retrieve the current flags, flip bits, and set the modified flags.
+```
+oldfl = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+newfl = oldfl | libc::O_NONBLOCK;
+let r = unsafe { libc::fcntl(self.fd, libc::F_SETFL) };
+```
+
+### set timeouts
+both of these are heavily dependent on the utils mod. it seems like utils should be part of the lib?
+set_read_timeout  
+set_write_timeout  
+I think I would move the set_socket_option into the lib.rs, and leave these conversions in the utils.
+
+Why can't I implement a timeval as Duration and Duration as timeval? This is the orphan rule?

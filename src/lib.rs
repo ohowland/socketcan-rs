@@ -48,6 +48,10 @@ extern crate itertools;
 mod errors;
 mod util;
 
+use std::{fmt, mem, io, time};
+use itertools::Itertools;
+
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 pub use errors::{
     CanError, 
     CanErrorDecodingFailure, 
@@ -58,17 +62,7 @@ pub use errors::{
 #[cfg(test)]
 mod tests;
 
-//use libc::{c_int, c_short, c_void, c_uint, c_ulong, socket, SOCK_RAW, close, bind, sockaddr, read,
-//           write, SOL_SOCKET, SO_RCVTIMEO, timespec, timeval, EINPROGRESS, SO_SNDTIMEO, time_t,
-//           suseconds_t, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
-use std::fmt;
-use std::mem;
-use std::io;
 
-use itertools::Itertools;
-
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use util::{set_socket_option, set_socket_option_mult};
 
 /// Check an error return value for timeouts.
 ///
@@ -155,14 +149,6 @@ pub const ERR_MASK_ALL: u32 = ERR_MASK;
 /// an error mask that will cause SocketCAN to silently drop all errors
 pub const ERR_MASK_NONE: u32 = 0;
 
-fn new_c_timeval(t: std::time::Duration) -> libc::timeval {
-    libc::timeval {
-        tv_sec: t.as_secs() as libc::time_t,
-        tv_usec: (t.subsec_micros()) as libc::suseconds_t,
-    }
-}
-
-
 /// A socket for a CAN device.
 ///
 /// Will be closed upon deallocation. To close manually, use std::drop::Drop.
@@ -196,7 +182,12 @@ impl CanSocket {
     ///
     /// Opens a CAN device by kernel interface number.
     pub fn open_interface(if_index: libc::c_uint) -> Result<CanSocket, CanSocketOpenError> {
-        // open socket
+        let fd = CanSocket::open_socket()?;
+        let fd = CanSocket::bind_socket(if_index, fd)?;
+        Ok(CanSocket { fd: fd })
+    }
+
+    fn open_socket() -> Result<i32, CanSocketOpenError> {
         let fd: i32;
         unsafe {
             fd = libc::socket(libc::PF_CAN, libc::SOCK_RAW, CAN_RAW);
@@ -206,7 +197,10 @@ impl CanSocket {
             return Err(CanSocketOpenError::from(io::Error::last_os_error()));
         }
 
-        // bind it
+        Ok(fd)
+    }
+
+    fn bind_socket(if_index: libc::c_uint, fd: i32) -> Result<i32, CanSocketOpenError> { 
         let socketaddr = CanAddr {
             af_can: libc::AF_CAN as libc::c_short,
             if_index: if_index as libc::c_int,
@@ -214,7 +208,7 @@ impl CanSocket {
             tx_id: 0,
         };
 
-        let r;
+        let r: i32;
         unsafe {
             let socketaddr_ptr = &socketaddr as *const CanAddr;
             r = libc::bind(
@@ -226,14 +220,15 @@ impl CanSocket {
 
         if r == -1 {
             let e = io::Error::last_os_error();
+            // clean up resource if failure to open
             unsafe { libc::close(fd); }
             return Err(CanSocketOpenError::from(e));
         }
 
-        Ok(CanSocket { fd: fd })
+        Ok(fd)
     }
 
-    fn close(&mut self) -> io::Result<()> {
+    pub fn close(&mut self) -> io::Result<()> {
         unsafe {
             let r = libc::close(self.fd);
             if r != -1 {
@@ -246,37 +241,37 @@ impl CanSocket {
     /// Change socket to non-blocking mode
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         // retrieve current file status flags
-        let oldfl = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let old_flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
 
-        if oldfl == -1 {
+        if old_flags == -1 {
             return Err(io::Error::last_os_error());
         }
 
-        let newfl = if nonblocking {
-            oldfl | libc::O_NONBLOCK
+        let new_flags = if nonblocking {
+            old_flags | libc::O_NONBLOCK
         } else {
-            oldfl & !libc::O_NONBLOCK
+            old_flags & !libc::O_NONBLOCK
         };
 
-        let rv = unsafe { libc::fcntl(self.fd, libc::F_SETFL, newfl) };
+        let r = unsafe { libc::fcntl(self.fd, libc::F_SETFL, new_flags) };
 
-        if rv != 0 {
+        if r != 0 {
             return Err(io::Error::last_os_error());
         }
         Ok(())
     }
 
-    /// Sets the read timeout on the socket
+    /// Set the read timeout on the socket
     ///
     /// For convenience, the result value can be checked using
     /// `ShouldRetry::should_retry` when a timeout is set.
     pub fn set_read_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        set_socket_option(self.fd, SOL_SOCKET, SO_RCVTIMEO, &new_c_timeval(duration))
+        util::set_socket_option(self.fd, libc::SOL_SOCKET, libc::SO_RCVTIMEO, &util::timeval_from_duration(duration))
     }
 
-    /// Sets the write timeout on the socket
+    /// Set the write timeout on the socket
     pub fn set_write_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        set_socket_option(self.fd, SOL_SOCKET, SO_SNDTIMEO, &new_c_timeval(duration))
+        set_socket_option(self.fd, libc::SOL_SOCKET, libc::SO_SNDTIMEO, &new_c_timeval(duration))
     }
 
     /// Blocking read a single can frame.
