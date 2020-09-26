@@ -1,5 +1,5 @@
 use std::{io, ptr, mem, time};
-use std::convert::TryFrom;
+
 /// `setsockopt` wrapper
 ///
 /// The libc `setsockopt` function is set to set various options on a socket.
@@ -23,17 +23,16 @@ pub fn set_socket_option<T>(fd: libc::c_int,
                             level: libc::c_int, 
                             name: libc::c_int, 
                             val: &T) -> io::Result<()> {
-    let rv = unsafe {
+    let r = unsafe {
         let val_ptr: *const T = val as *const T;
-
-        setsockopt(fd,
-                   level,
-                   name,
-                   val_ptr as *const libc::c_void,
-                   mem::size_of::<T>() as libc::socklen_t)
+        libc::setsockopt(fd,
+                         level,
+                         name,
+                         val_ptr as *const libc::c_void,
+                         mem::size_of::<T>() as libc::socklen_t)
     };
 
-    if rv != 0 {
+    if r != 0 {
         return Err(io::Error::last_os_error());
     }
 
@@ -46,7 +45,7 @@ pub fn set_socket_option_mult<T>(fd: libc::c_int,
                                  values: &[T])
                                  -> io::Result<()> {
 
-    let rv = if values.len() < 1 {
+    let r = if values.len() < 1 {
         // can't pass in a pointer to the first element if a 0-length slice,
         // pass a nullpointer instead
         unsafe { libc::setsockopt(fd, level, name, ptr::null(), 0) }
@@ -63,7 +62,7 @@ pub fn set_socket_option_mult<T>(fd: libc::c_int,
         }
     };
 
-    if rv != 0 {
+    if r != 0 {
         return Err(io::Error::last_os_error());
     }
 

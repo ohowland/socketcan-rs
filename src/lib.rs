@@ -111,7 +111,7 @@ impl<E: std::fmt::Debug> ShouldRetry for std::io::Result<E> {
 const CAN_RAW: libc::c_int = 1;
 
 // Protool of the PF_CAN Family: Broadcast Manager
-const CAN_BCM: libc::c_int = 2;
+//const CAN_BCM: libc::c_int = 2;
 
 const SOL_CAN_BASE: libc::c_int = 100;
 const SOL_CAN_RAW: libc::c_int = SOL_CAN_BASE + CAN_RAW;
@@ -362,7 +362,7 @@ impl CanSocket {
     /// See `CanFilter` for details on how filtering works. By default, all
     /// single filter matching all incoming frames is installed.
     pub fn set_filters(&self, filters: &[CanFilter]) -> io::Result<()> {
-        set_socket_option_mult(self.fd, SOL_CAN_RAW, CAN_RAW_FILTER, filters)
+        util::set_socket_option_mult(self.fd, SOL_CAN_RAW, CAN_RAW_FILTER, filters)
     }
 
     /// Sets the error mask on the socket.
@@ -373,7 +373,7 @@ impl CanSocket {
     /// socket to receive notification about the specified conditions.
     #[inline]
     pub fn set_error_mask(&self, mask: u32) -> io::Result<()> {
-        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &mask)
+        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &mask)
     }
 
     /// Enable or disable loopback.
@@ -383,8 +383,11 @@ impl CanSocket {
     /// the same system.
     #[inline]
     pub fn set_loopback(&self, enabled: bool) -> io::Result<()> {
-        let loopback: c_int = if enabled { 1 } else { 0 };
-        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback)
+        let loopback: libc::c_int = match enabled {
+            true => 1,
+            false => 0,
+        };
+        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback)
     }
 
     /// Enable or disable receiving of own frames.
@@ -392,8 +395,11 @@ impl CanSocket {
     /// When loopback is enabled, this settings controls if CAN frames sent
     /// are received back immediately by sender. Default is off.
     pub fn set_recv_own_msgs(&self, enabled: bool) -> io::Result<()> {
-        let recv_own_msgs: c_int = if enabled { 1 } else { 0 };
-        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own_msgs)
+        let recv_own_msgs: libc::c_int = match enabled {
+            true => 1,
+            false => 0,
+        };
+        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own_msgs)
     }
 
     /// Enable or disable join filters.
@@ -402,11 +408,13 @@ impl CanSocket {
     /// with `set_filters`. If join filters is enabled, a frame has to match
     /// _all_ filters to be accepted.
     pub fn set_join_filters(&self, enabled: bool) -> io::Result<()> {
-        let join_filters: c_int = if enabled { 1 } else { 0 };
-        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_JOIN_FILTERS, &join_filters)
+        let join_filters: libc::c_int = match enabled {
+            true => 1,
+            false => 0,
+        };
+        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_JOIN_FILTERS, &join_filters)
     }
 }
-
 
 impl AsRawFd for CanSocket {
     fn as_raw_fd(&self) -> RawFd {
@@ -428,7 +436,10 @@ impl IntoRawFd for CanSocket {
 
 impl Drop for CanSocket {
     fn drop(&mut self) {
-        self.close().ok(); // ignore result
+        match self.close() {
+            Ok(_) => println!("Socket dropped successfully {}", self.fd),
+            Err(e) => println!("Error dropping socket {}", e),
+        };
     }
 }
 
