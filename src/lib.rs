@@ -41,8 +41,6 @@
 //! is available through the `AsRawFd`, `IntoRawFd` and `FromRawFd`
 //! implementations.
 
-// clippy: do not warn about things like "SocketCAN" inside the docs
-#![cfg_attr(feature = "cargo-clippy", allow(doc_markdown))]
 extern crate libc;
 extern crate nix;
 extern crate itertools;
@@ -50,7 +48,12 @@ extern crate itertools;
 mod errors;
 mod util;
 
-pub use errors::{CanError, CanErrorDecodingFailure};
+pub use errors::{
+    CanError, 
+    CanErrorDecodingFailure, 
+    CanSocketOpenError, 
+    ConstructionError
+};
 
 #[cfg(test)]
 mod tests;
@@ -58,12 +61,12 @@ mod tests;
 //use libc::{c_int, c_short, c_void, c_uint, c_ulong, socket, SOCK_RAW, close, bind, sockaddr, read,
 //           write, SOL_SOCKET, SO_RCVTIMEO, timespec, timeval, EINPROGRESS, SO_SNDTIMEO, time_t,
 //           suseconds_t, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
+use std::fmt;
+use std::mem;
+use std::io;
 
 use itertools::Itertools;
 
-use nix::net::if_::if_nametoindex;
-use std::{error, fmt, io, time};
-use std::mem::{size_of, MaybeUninit};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use util::{set_socket_option, set_socket_option_mult};
 
@@ -80,17 +83,17 @@ pub trait ShouldRetry {
     fn should_retry(&self) -> bool;
 }
 
-impl ShouldRetry for io::Error {
+impl ShouldRetry for std::io::Error {
     fn should_retry(&self) -> bool {
         match self.kind() {
             // EAGAIN, EINPROGRESS and EWOULDBLOCK are the three possible codes
             // returned when a timeout occurs. the stdlib already maps EAGAIN
             // and EWOULDBLOCK os WouldBlock
-            io::ErrorKind::WouldBlock => true,
+            std::io::ErrorKind::WouldBlock => true,
             // however, EINPROGRESS is also valid
-            io::ErrorKind::Other => {
+            std::io::ErrorKind::Other => {
                 if let Some(i) = self.raw_os_error() {
-                    i == EINPROGRESS
+                    i == libc::EINPROGRESS
                 } else {
                     false
                 }
@@ -100,7 +103,7 @@ impl ShouldRetry for io::Error {
     }
 }
 
-impl<E: fmt::Debug> ShouldRetry for io::Result<E> {
+impl<E: std::fmt::Debug> ShouldRetry for std::io::Result<E> {
     fn should_retry(&self) -> bool {
         if let Err(ref e) = *self {
             e.should_retry()
@@ -110,28 +113,25 @@ impl<E: fmt::Debug> ShouldRetry for io::Result<E> {
     }
 }
 
-// constants stolen from C headers
-const AF_CAN:                   libc::c_int = 29;
-const PF_CAN:                   libc::c_int = 29;
-const CAN_RAW:                  libc::c_int = 1;
-const SOL_CAN_BASE:             libc::c_int = 100;
-const SOL_CAN_RAW:              libc::c_int = SOL_CAN_BASE + CAN_RAW;
-const CAN_RAW_FILTER:           libc::c_int = 1;
-const CAN_RAW_ERR_FILTER:       libc::c_int = 2;
-const CAN_RAW_LOOPBACK:         libc::c_int = 3;
-const CAN_RAW_RECV_OWN_MSGS:    libc::c_int = 4;
-const CAN_RAW_JOIN_FILTERS:     libc::c_int = 6;
-// unused:
+// Protocol of the PF_CAN Family: Standard?
+const CAN_RAW: libc::c_int = 1;
+
+// Protool of the PF_CAN Family: Broadcast Manager
+const CAN_BCM: libc::c_int = 2;
+
+const SOL_CAN_BASE: libc::c_int = 100;
+const SOL_CAN_RAW: libc::c_int = SOL_CAN_BASE + CAN_RAW;
+const CAN_RAW_FILTER: libc::c_int = 1;
+const CAN_RAW_ERR_FILTER: libc::c_int = 2;
+const CAN_RAW_LOOPBACK: libc::c_int = 3;
+const CAN_RAW_RECV_OWN_MSGS: libc::c_int = 4;
+const CAN_RAW_JOIN_FILTERS: libc::c_int = 6;
 // const CAN_RAW_FD_FRAMES: c_int = 5;
-
-
-// get timestamp in a struct timeval (us accuracy)
-// const SIOCGSTAMP: c_int = 0x8906;
 
 // get timestamp from ioctl in a struct timespec (ns accuracy)
 const SIOCGSTAMPNS: libc::c_int = 0x8907;
 
-/// if set, indicate 29 bit extended format
+/// Indicate 29 bit extended format
 pub const EFF_FLAG: u32 = 0x80000000;
 
 /// remote transmission request flag
@@ -149,90 +149,19 @@ pub const EFF_MASK: u32 = 0x1fffffff;
 /// valid bits in error frame
 pub const ERR_MASK: u32 = 0x1fffffff;
 
-
 /// an error mask that will cause SocketCAN to report all errors
 pub const ERR_MASK_ALL: u32 = ERR_MASK;
 
 /// an error mask that will cause SocketCAN to silently drop all errors
 pub const ERR_MASK_NONE: u32 = 0;
 
-fn c_timeval_new(t: time::Duration) -> timeval {
-    timeval {
-        tv_sec: t.as_secs() as time_t,
-        tv_usec: (t.subsec_nanos() / 1000) as suseconds_t,
+fn new_c_timeval(t: std::time::Duration) -> libc::timeval {
+    libc::timeval {
+        tv_sec: t.as_secs() as libc::time_t,
+        tv_usec: (t.subsec_micros()) as libc::suseconds_t,
     }
 }
 
-#[derive(Debug)]
-#[repr(C)]
-struct CanAddr {
-    _af_can: c_short,
-    if_index: c_int, // address familiy,
-    rx_id: u32,
-    tx_id: u32,
-}
-
-#[derive(Debug)]
-/// Errors opening socket
-pub enum CanSocketOpenError {
-    /// Device could not be found
-    LookupError(nix::Error),
-
-    /// System error while trying to look up device name
-    IOError(io::Error),
-}
-
-impl fmt::Display for CanSocketOpenError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            CanSocketOpenError::LookupError(ref e) => write!(f, "CAN Device not found: {}", e),
-            CanSocketOpenError::IOError(ref e) => write!(f, "IO: {}", e),
-        }
-    }
-}
-
-impl error::Error for CanSocketOpenError {}
-
-#[derive(Debug, Copy, Clone)]
-/// Error that occurs when creating CAN packets
-pub enum ConstructionError {
-    /// CAN ID was outside the range of valid IDs
-    IDTooLarge,
-    /// More than 8 Bytes of payload data were passed in
-    TooMuchData,
-}
-
-impl fmt::Display for ConstructionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ConstructionError::IDTooLarge => write!(f, "CAN ID too large"),
-            ConstructionError::TooMuchData => {
-                write!(f, "Payload is larger than CAN maximum of 8 bytes")
-            }
-        }
-    }
-}
-
-impl error::Error for ConstructionError {
-    fn description(&self) -> &str {
-        match *self {
-            ConstructionError::IDTooLarge => "can id too large",
-            ConstructionError::TooMuchData => "too much data",
-        }
-    }
-}
-
-impl From<nix::Error> for CanSocketOpenError {
-    fn from(e: nix::Error) -> CanSocketOpenError {
-        CanSocketOpenError::LookupError(e)
-    }
-}
-
-impl From<io::Error> for CanSocketOpenError {
-    fn from(e: io::Error) -> CanSocketOpenError {
-        CanSocketOpenError::IOError(e)
-    }
-}
 
 /// A socket for a CAN device.
 ///
@@ -240,7 +169,17 @@ impl From<io::Error> for CanSocketOpenError {
 /// Internally this is just a wrapped file-descriptor.
 #[derive(Debug)]
 pub struct CanSocket {
-    fd: c_int,
+    fd: libc::c_int,
+}
+
+/// A CAN address struct for binding a socket
+#[derive(Debug)]
+#[repr(C)]
+struct CanAddr {
+    af_can: libc::c_short,
+    if_index: libc::c_int,
+    rx_id: libc::c_uint, // transport protocol class address information (e.g. ISOTP)
+    tx_id: libc::c_uint,
 }
 
 impl CanSocket {
@@ -249,56 +188,55 @@ impl CanSocket {
     /// Usually the more common case, opens a socket can device by name, such
     /// as "vcan0" or "socan0".
     pub fn open(ifname: &str) -> Result<CanSocket, CanSocketOpenError> {
-        let if_index = if_nametoindex(ifname)?;
-        CanSocket::open_if(if_index)
+        let if_index = nix::net::if_::if_nametoindex(ifname)?;
+        CanSocket::open_interface(if_index)
     }
 
     /// Open CAN device by interface number.
     ///
     /// Opens a CAN device by kernel interface number.
-    pub fn open_if(if_index: c_uint) -> Result<CanSocket, CanSocketOpenError> {
-        let addr = CanAddr {
-            _af_can: AF_CAN as c_short,
-            if_index: if_index as c_int,
-            rx_id: 0, // ?
-            tx_id: 0, // ?
-        };
-
+    pub fn open_interface(if_index: libc::c_uint) -> Result<CanSocket, CanSocketOpenError> {
         // open socket
-        let sock_fd;
+        let fd: i32;
         unsafe {
-            sock_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+            fd = libc::socket(libc::PF_CAN, libc::SOCK_RAW, CAN_RAW);
         }
 
-        if sock_fd == -1 {
+        if fd == -1 {
             return Err(CanSocketOpenError::from(io::Error::last_os_error()));
         }
 
         // bind it
-        let bind_rv;
+        let socketaddr = CanAddr {
+            af_can: libc::AF_CAN as libc::c_short,
+            if_index: if_index as libc::c_int,
+            rx_id: 0,
+            tx_id: 0,
+        };
+
+        let r;
         unsafe {
-            let sockaddr_ptr = &addr as *const CanAddr;
-            bind_rv = bind(sock_fd,
-                           sockaddr_ptr as *const sockaddr,
-                           size_of::<CanAddr>() as u32);
+            let socketaddr_ptr = &socketaddr as *const CanAddr;
+            r = libc::bind(
+                fd,
+                socketaddr_ptr as *const libc::sockaddr,
+                mem::size_of::<CanAddr>() as u32
+            );
         }
 
-        // FIXME: on fail, close socket (do not leak socketfds)
-        if bind_rv == -1 {
+        if r == -1 {
             let e = io::Error::last_os_error();
-            unsafe {
-                close(sock_fd);
-            }
+            unsafe { libc::close(fd); }
             return Err(CanSocketOpenError::from(e));
         }
 
-        Ok(CanSocket { fd: sock_fd })
+        Ok(CanSocket { fd: fd })
     }
 
     fn close(&mut self) -> io::Result<()> {
         unsafe {
-            let rv = close(self.fd);
-            if rv != -1 {
+            let r = libc::close(self.fd);
+            if r != -1 {
                 return Err(io::Error::last_os_error());
             }
         }
@@ -307,20 +245,20 @@ impl CanSocket {
 
     /// Change socket to non-blocking mode
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        // retrieve current flags
-        let oldfl = unsafe { fcntl(self.fd, F_GETFL) };
+        // retrieve current file status flags
+        let oldfl = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
 
         if oldfl == -1 {
             return Err(io::Error::last_os_error());
         }
 
         let newfl = if nonblocking {
-            oldfl | O_NONBLOCK
+            oldfl | libc::O_NONBLOCK
         } else {
-            oldfl & !O_NONBLOCK
+            oldfl & !libc::O_NONBLOCK
         };
 
-        let rv = unsafe { fcntl(self.fd, F_SETFL, newfl) };
+        let rv = unsafe { libc::fcntl(self.fd, libc::F_SETFL, newfl) };
 
         if rv != 0 {
             return Err(io::Error::last_os_error());
@@ -333,12 +271,12 @@ impl CanSocket {
     /// For convenience, the result value can be checked using
     /// `ShouldRetry::should_retry` when a timeout is set.
     pub fn set_read_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        set_socket_option(self.fd, SOL_SOCKET, SO_RCVTIMEO, &c_timeval_new(duration))
+        set_socket_option(self.fd, SOL_SOCKET, SO_RCVTIMEO, &new_c_timeval(duration))
     }
 
     /// Sets the write timeout on the socket
     pub fn set_write_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        set_socket_option(self.fd, SOL_SOCKET, SO_SNDTIMEO, &c_timeval_new(duration))
+        set_socket_option(self.fd, SOL_SOCKET, SO_SNDTIMEO, &new_c_timeval(duration))
     }
 
     /// Blocking read a single can frame.
@@ -477,6 +415,7 @@ impl CanSocket {
         set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_JOIN_FILTERS, &join_filters)
     }
 }
+
 
 impl AsRawFd for CanSocket {
     fn as_raw_fd(&self) -> RawFd {

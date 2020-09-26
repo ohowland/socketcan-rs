@@ -5,6 +5,69 @@ use std::convert::TryFrom;
 use super::CanFrame;
 use std::{error, fmt};
 
+#[derive(Debug)]
+/// Errors opening socket
+pub enum CanSocketOpenError {
+    /// Device could not be found
+    LookupError(nix::Error),
+
+    /// System error while trying to look up device name
+    IOError(std::io::Error),
+}
+
+impl fmt::Display for CanSocketOpenError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            CanSocketOpenError::LookupError(ref e) => write!(f, "CAN Device not found: {}", e),
+            CanSocketOpenError::IOError(ref e) => write!(f, "IO: {}", e),
+        }
+    }
+}
+
+impl error::Error for CanSocketOpenError {}
+
+impl From<nix::Error> for CanSocketOpenError {
+    fn from(e: nix::Error) -> CanSocketOpenError {
+        CanSocketOpenError::LookupError(e)
+    }
+}
+
+impl From<std::io::Error> for CanSocketOpenError {
+    fn from(e: std::io::Error) -> CanSocketOpenError {
+        CanSocketOpenError::IOError(e)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+/// Error that occurs when creating CAN packets
+pub enum ConstructionError {
+    /// CAN ID was outside the range of valid IDs
+    IDTooLarge,
+    /// More than 8 Bytes of payload data were passed in
+    TooMuchData,
+}
+
+impl fmt::Display for ConstructionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConstructionError::IDTooLarge => write!(f, "CAN ID too large"),
+            ConstructionError::TooMuchData => {
+                write!(f, "Payload is larger than CAN maximum of 8 bytes")
+            }
+        }
+    }
+}
+
+impl error::Error for ConstructionError {
+    fn description(&self) -> &str {
+        match *self {
+            ConstructionError::IDTooLarge => "can id too large",
+            ConstructionError::TooMuchData => "too much data",
+        }
+    }
+}
+
+
 
 #[inline]
 /// Helper function to retrieve a specific byte of frame data or returning an
