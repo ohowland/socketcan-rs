@@ -10,14 +10,13 @@ fn test_nonexistant_device() {
 mod vcan_tests {
     use {CanFrame, CanInterface, CanSocket, ERR_MASK_ALL, ERR_MASK_NONE};
     use std::time;
-    use ShouldRetry;
 
     #[test]
     fn vcan0_timeout() {
         let cs = CanSocket::open("vcan0").unwrap();
         cs.set_read_timeout(time::Duration::from_millis(100))
             .unwrap();
-        assert!(cs.read_frame().should_retry());
+        assert!(cs.read().should_retry());
     }
 
     #[test]
@@ -35,9 +34,8 @@ mod vcan_tests {
 
         let frame = CanFrame::new(0x123, &[], true, false).unwrap();
 
-        cs.write_frame(&frame).unwrap();
-
-        cs.read_frame().unwrap();
+        cs.write(&frame).unwrap();
+        cs.read().unwrap();
     }
 
     #[test]
@@ -52,7 +50,7 @@ mod vcan_tests {
         cs.set_nonblocking(true);
 
         // no timeout set, but should return immediately
-        assert!(cs.read_frame().should_retry());
+        assert!(cs.read().should_retry());
     }
 
 }
