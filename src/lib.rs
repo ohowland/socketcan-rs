@@ -266,16 +266,55 @@ impl CanSocket {
     /// For convenience, the result value can be checked using
     /// `ShouldRetry::should_retry` when a timeout is set.
     pub fn set_read_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        util::set_socket_option(self.fd, libc::SOL_SOCKET, libc::SO_RCVTIMEO, &util::timeval_from_duration(duration))
+        util::set_socket_option(
+            self.fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &util::timeval_from_duration(duration)
+        )
     }
 
     /// Set the write timeout on the socket
     pub fn set_write_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        set_socket_option(self.fd, libc::SOL_SOCKET, libc::SO_SNDTIMEO, &new_c_timeval(duration))
+        util::set_socket_option(
+            self.fd,
+            libc::SOL_SOCKET,
+            libc::SO_SNDTIMEO,
+            &util::timeval_from_duration(duration)
+        )
     }
 
+
+    /// Blocking read a single can frame with timestamp
+    ///
+    /// Note that reading a frame and retrieving the timestamp requires two
+    /// consecutive syscalls.
+    pub fn read(&self) -> io::Result<(CanFrame, time::SystemTime)> {
+        let frame = self.read_socket()?;
+        let ts = self.socket_timestamp()?;
+
+        Ok((frame, ts))
+    }
+
+    fn socket_timestamp(&self) -> io::Result<time::SystemTime> {
+        let mut ts = mem::MaybeUninit::<libc::timespec>::uninit();
+        let r = unsafe { 
+            libc::ioctl(self.fd,
+                        SIOCGSTAMPNS as libc::c_ulong,
+                        ts.as_mut_ptr())
+        };
+
+        if r == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let ts = unsafe { ts.assume_init() };
+        
+        Ok(util::system_time_from_timespec(ts))
+    }
+    
     /// Blocking read a single can frame.
-    pub fn read_frame(&self) -> io::Result<CanFrame> {
+    fn read_socket(&self) -> io::Result<CanFrame> {
         let mut frame = CanFrame {
             _id: 0,
             _data_len: 0,
@@ -285,40 +324,16 @@ impl CanSocket {
             _data: [0; 8],
         };
 
-        let read_rv = unsafe {
+        let r = unsafe {
             let frame_ptr = &mut frame as *mut CanFrame;
-            read(self.fd, frame_ptr as *mut c_void, size_of::<CanFrame>())
+            libc::read(self.fd, frame_ptr as *mut libc::c_void, mem::size_of::<CanFrame>())
         };
 
-        if read_rv as usize != size_of::<CanFrame>() {
+        if r as usize != mem::size_of::<CanFrame>() {
             return Err(io::Error::last_os_error());
         }
 
         Ok(frame)
-    }
-
-    /// Blocking read a single can frame with timestamp
-    ///
-    /// Note that reading a frame and retrieving the timestamp requires two
-    /// consecutive syscalls. To avoid race conditions, exclusive access
-    /// to the socket is enforce through requiring a `mut &self`.
-    pub fn read_frame_with_timestamp(&mut self) -> io::Result<(CanFrame, time::SystemTime)> {
-        let frame = self.read_frame()?;
-
-        let mut ts = MaybeUninit::<timespec>::uninit();
-        let r = unsafe { 
-            libc::ioctl(self.fd, SIOCGSTAMPNS as c_ulong, ts.as_mut_ptr())
-        };
-
-        if r == -1 {
-            return Err(io::Error::last_os_error());
-        }
-
-        let ts = unsafe { 
-            ts.assume_init() 
-        };
-
-        Ok((frame, util::system_time_from_timespec(ts)))
     }
 
     /// Write a single can frame.
@@ -326,36 +341,17 @@ impl CanSocket {
     /// Note that this function can fail with an `EAGAIN` error or similar.
     /// Use `write_frame_insist` if you need to be sure that the message got
     /// sent or failed.
-    pub fn write_frame(&self, frame: &CanFrame) -> io::Result<()> {
-        // not a mutable reference needed (see std::net::UdpSocket) for
-        // a comparison
-        // debug!("Sending: {:?}", frame);
-
+    pub fn write(&self, frame: &CanFrame) -> io::Result<()> {
         let r = unsafe {
             let frame_ptr = frame as *const CanFrame;
-            write(self.fd, frame_ptr as *const c_void, size_of::<CanFrame>())
+            libc::write(self.fd, frame_ptr as *const libc::c_void, mem::size_of::<CanFrame>())
         };
 
-        if r as usize != size_of::<CanFrame>() {
+        if r as usize != mem::size_of::<CanFrame>() {
             return Err(io::Error::last_os_error());
         }
 
         Ok(())
-    }
-
-    /// Blocking write a single can frame, retrying until it gets sent
-    /// successfully.
-    pub fn write_frame_insist(&self, frame: &CanFrame) -> io::Result<()> {
-        loop {
-            match self.write_frame(frame) {
-                Ok(v) => return Ok(v),
-                Err(e) => {
-                    if !e.should_retry() {
-                        return Err(e);
-                    }
-                }
-            }
-        }
     }
 
     /// Sets filters on the socket.

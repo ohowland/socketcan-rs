@@ -125,7 +125,12 @@ if r < 0 {
 }
 ```
 
+### Socket Time Stamp
+SIOCGSTAMPNS: Check last socket timestamp (ns)
+`let r = libc::ioctl(self.fd, SIOCGSTAMPNS, ts.as_mut_ptr())`
+
 ## Methods on CanSocket
+
 ### Set nonblocking
 Non-blocking is set using file status flags.
 `libc::fcntl(fd, cmd)`
@@ -137,10 +142,17 @@ newfl = oldfl | libc::O_NONBLOCK;
 let r = unsafe { libc::fcntl(self.fd, libc::F_SETFL) };
 ```
 
-### set timeouts
+### Set Timeouts
 both of these are heavily dependent on the utils mod. it seems like utils should be part of the lib?
 set_read_timeout  
 set_write_timeout  
 I think I would move the set_socket_option into the lib.rs, and leave these conversions in the utils.
 
 Why can't I implement a timeval as Duration and Duration as timeval? This is the orphan rule?
+
+
+## Read CAN Frame
+Why read without a timestamp?
+
+## Write CAN Frame
+Write is split into to pieces, a function that can fail, and a function that will block until it is successful. This seems like the wrong place for this utility, I'd like to move Should Retry to some sort of message manager module.
