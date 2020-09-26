@@ -1,4 +1,5 @@
 use CanSocket;
+use ShouldRetry;
 
 #[test]
 fn test_nonexistant_device() {
@@ -13,10 +14,10 @@ mod vcan_tests {
 
     #[test]
     fn vcan0_timeout() {
-        let cs = CanSocket::open("vcan0").unwrap();
-        cs.set_read_timeout(time::Duration::from_millis(100))
+        let s = CanSocket::open("vcan0").unwrap();
+        s.set_read_timeout(time::Duration::from_millis(100))
             .unwrap();
-        assert!(cs.read().should_retry());
+        assert!(s.read().should_retry());
     }
 
     #[test]
