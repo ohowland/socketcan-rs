@@ -151,8 +151,8 @@ I think I would move the set_socket_option into the lib.rs, and leave these conv
 Why can't I implement a timeval as Duration and Duration as timeval? This is the orphan rule?
 
 
-## Read CAN Frame
+### Read CAN Frame
 Why read without a timestamp?
 
-## Write CAN Frame
+### Write CAN Frame
 Write is split into to pieces, a function that can fail, and a function that will block until it is successful. This seems like the wrong place for this utility, I'd like to move Should Retry to some sort of message manager module.
