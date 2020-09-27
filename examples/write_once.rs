@@ -1,10 +1,11 @@
 extern crate socketcan;
 extern crate log;
+extern crate env_logger;
 
 use socketcan::{CanSocket, CanFrame};
 
 fn main() {
-    
+    env_logger::init();    
     let bus  = CanSocket::open("vcan0").unwrap();
 
     let data: [u8; 4] = [222, 173, 190, 239];
