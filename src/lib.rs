@@ -45,6 +45,7 @@ extern crate libc;
 extern crate nix;
 extern crate itertools;
 extern crate byte_conv;
+extern crate log;
 
 mod constants;
 mod errors;
@@ -52,6 +53,7 @@ mod util;
 
 use std::{fmt, mem, io, time};
 use itertools::Itertools;
+use log::debug;
 
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 pub use errors::{
@@ -359,8 +361,8 @@ impl IntoRawFd for CanSocket {
 impl Drop for CanSocket {
     fn drop(&mut self) {
         match self.close() {
-            Ok(_) => println!("Socket dropped successfully {}", self.fd),
-            Err(e) => println!("Error dropping socket {}", e),
+            Ok(_) => debug!("Socket dropped (fd: {})", self.fd),
+            Err(e) => debug!("Error dropping socket {}", e),
         };
     }
 }

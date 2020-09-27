@@ -34,8 +34,8 @@ pub const EFF_MASK: u32 = 0x1fffffff;
 /// valid bits in error frame
 pub const ERR_MASK: u32 = 0x1fffffff;
 
-/// an error mask that will cause SocketCAN to report all errors
-pub const ERR_MASK_ALL: u32 = ERR_MASK;
+// an error mask that will cause SocketCAN to report all errors
+// pub const ERR_MASK_ALL: u32 = ERR_MASK;
 
-/// an error mask that will cause SocketCAN to silently drop all errors
-pub const ERR_MASK_NONE: u32 = 0;
+// an error mask that will cause SocketCAN to silently drop all errors
+// pub const ERR_MASK_NONE: u32 = 0;
