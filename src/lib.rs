@@ -46,9 +46,9 @@ extern crate nix;
 extern crate itertools;
 extern crate byte_conv;
 
+mod constants;
 mod errors;
 mod util;
-mod nl;
 
 use std::{fmt, mem, io, time};
 use itertools::Itertools;
@@ -61,50 +61,10 @@ pub use errors::{
     ConstructionError
 };
 
+use constants::*;
+
 #[cfg(test)]
 mod tests;
-
-// Protocol of the PF_CAN Family: Standard?
-const CAN_RAW: libc::c_int = 1;
-
-// Protool of the PF_CAN Family: Broadcast Manager
-//const CAN_BCM: libc::c_int = 2;
-
-const SOL_CAN_BASE: libc::c_int = 100;
-const SOL_CAN_RAW: libc::c_int = SOL_CAN_BASE + CAN_RAW;
-const CAN_RAW_FILTER: libc::c_int = 1;
-const CAN_RAW_ERR_FILTER: libc::c_int = 2;
-const CAN_RAW_LOOPBACK: libc::c_int = 3;
-const CAN_RAW_RECV_OWN_MSGS: libc::c_int = 4;
-const CAN_RAW_JOIN_FILTERS: libc::c_int = 6;
-// const CAN_RAW_FD_FRAMES: c_int = 5;
-
-// get timestamp from ioctl in a struct timespec (ns accuracy)
-const SIOCGSTAMPNS: libc::c_int = 0x8907;
-
-/// Indicate 29 bit extended format
-pub const EFF_FLAG: u32 = 0x80000000;
-
-/// remote transmission request flag
-pub const RTR_FLAG: u32 = 0x40000000;
-
-/// error flag
-pub const ERR_FLAG: u32 = 0x20000000;
-
-/// valid bits in standard frame id
-pub const SFF_MASK: u32 = 0x000007ff;
-
-/// valid bits in extended frame id
-pub const EFF_MASK: u32 = 0x1fffffff;
-
-/// valid bits in error frame
-pub const ERR_MASK: u32 = 0x1fffffff;
-
-/// an error mask that will cause SocketCAN to report all errors
-pub const ERR_MASK_ALL: u32 = ERR_MASK;
-
-/// an error mask that will cause SocketCAN to silently drop all errors
-pub const ERR_MASK_NONE: u32 = 0;
 
 /// A socket for a CAN device.
 ///
@@ -131,17 +91,20 @@ impl CanSocket {
     /// Usually the more common case, opens a socket can device by name, such
     /// as "vcan0" or "socan0".
     pub fn open(ifname: &str) -> Result<CanSocket, CanSocketOpenError> {
-        let if_index = nix::net::if_::if_nametoindex(ifname)?;
-        CanSocket::open_interface(if_index)
+        match nix::net::if_::if_nametoindex(ifname) {
+            Ok(ifindex) => CanSocket::open_interface(ifindex),
+            Err(e) => Err(CanSocketOpenError::from(e)),
+        }
     }
 
     /// Open CAN device by interface number.
     ///
     /// Opens a CAN device by kernel interface number.
     pub fn open_interface(if_index: libc::c_uint) -> Result<CanSocket, CanSocketOpenError> {
-        let fd = CanSocket::open_socket()?;
-        let fd = CanSocket::bind_socket(if_index, fd)?;
-        Ok(CanSocket { fd: fd })
+        match CanSocket::open_socket() {
+            Ok(fd) => CanSocket::bind_socket(if_index, fd), 
+            Err(e) => Err(e),
+        }
     }
 
     fn open_socket() -> Result<i32, CanSocketOpenError> {
@@ -157,7 +120,7 @@ impl CanSocket {
         Ok(fd)
     }
 
-    fn bind_socket(if_index: libc::c_uint, fd: i32) -> Result<i32, CanSocketOpenError> { 
+    fn bind_socket(if_index: libc::c_uint, fd: i32) -> Result<CanSocket, CanSocketOpenError> { 
         let socketaddr = CanAddr {
             af_can: libc::AF_CAN as libc::c_short,
             if_index: if_index as libc::c_int,
@@ -167,11 +130,10 @@ impl CanSocket {
 
         let r: i32;
         unsafe {
-            let socketaddr_ptr = &socketaddr as *const CanAddr;
-            r = libc::bind(
-                fd,
-                socketaddr_ptr as *const libc::sockaddr,
-                mem::size_of::<CanAddr>() as u32
+            let p = &socketaddr as *const CanAddr;
+            r = libc::bind(fd,
+                           p as *const libc::sockaddr,
+                           mem::size_of::<CanAddr>() as u32
             );
         }
 
@@ -181,8 +143,8 @@ impl CanSocket {
             unsafe { libc::close(fd); }
             return Err(CanSocketOpenError::from(e));
         }
-
-        Ok(fd)
+        
+        Ok(CanSocket { fd: fd })
     }
 
     pub fn close(&mut self) -> io::Result<()> {

@@ -1,5 +1,4 @@
 use CanSocket;
-use ShouldRetry;
 
 #[test]
 fn test_nonexistant_device() {

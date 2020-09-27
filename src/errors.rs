@@ -107,7 +107,7 @@ pub enum CanErrorDecodingFailure {
     InvalidTransceiverError,
 }
 impl fmt::Display for CanErrorDecodingFailure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
             CanErrorDecodingFailure::NotAnError => "CAN frame is not an error",
             CanErrorDecodingFailure::UnknownErrorType(_) => "unknown error type",
@@ -162,7 +162,7 @@ pub enum CanError {
 impl error::Error for CanError {}
 
 impl fmt::Display for CanError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             CanError::TransmitTimeout => write!(f, "transmission timeout"),
             CanError::LostArbitration(n) => write!(f, "arbitration lost after {} bits", n),
@@ -209,7 +209,7 @@ pub enum ControllerProblem {
 impl error::Error for ControllerProblem {}
 
 impl fmt::Display for ControllerProblem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
             ControllerProblem::Unspecified => "unspecified controller problem",
             ControllerProblem::ReceiveBufferOverflow => "receive buffer overflow",
@@ -274,7 +274,7 @@ pub enum ViolationType {
 impl error::Error for ViolationType {}
 
 impl fmt::Display for ViolationType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
             ViolationType::Unspecified => "unspecified",
             ViolationType::SingleBitError => "single bit error",
@@ -376,7 +376,7 @@ pub enum Location {
 }
 
 impl fmt::Display for Location {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
             Location::Unspecified => "unspecified location",
             Location::StartOfFrame => "start of frame",
@@ -447,7 +447,7 @@ pub enum TransceiverError {
 }
 
 impl fmt::Display for TransceiverError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
             TransceiverError::Unspecified => "Unspecified",
             TransceiverError::CanHighNoWire => "CANbus High Wire Open",
