@@ -148,59 +148,16 @@ impl CanSocket {
     }
 
     pub fn close(&mut self) -> io::Result<()> {
+        let r: i32;
         unsafe {
-            let r = libc::close(self.fd);
-            if r != -1 {
-                return Err(io::Error::last_os_error());
-            }
+            r = libc::close(self.fd);
         }
-        Ok(())
-    }
 
-    /// Change socket to non-blocking mode
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        // retrieve current file status flags
-        let old_flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
-
-        if old_flags == -1 {
+        if r == -1 {
             return Err(io::Error::last_os_error());
         }
 
-        let new_flags = if nonblocking {
-            old_flags | libc::O_NONBLOCK
-        } else {
-            old_flags & !libc::O_NONBLOCK
-        };
-
-        let r = unsafe { libc::fcntl(self.fd, libc::F_SETFL, new_flags) };
-
-        if r != 0 {
-            return Err(io::Error::last_os_error());
-        }
         Ok(())
-    }
-
-    /// Set the read timeout on the socket
-    ///
-    /// For convenience, the result value can be checked using
-    /// `ShouldRetry::should_retry` when a timeout is set.
-    pub fn set_read_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        util::set_socket_option(
-            self.fd,
-            libc::SOL_SOCKET,
-            libc::SO_RCVTIMEO,
-            &util::timeval_from_duration(duration)
-        )
-    }
-
-    /// Set the write timeout on the socket
-    pub fn set_write_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        util::set_socket_option(
-            self.fd,
-            libc::SOL_SOCKET,
-            libc::SO_SNDTIMEO,
-            &util::timeval_from_duration(duration)
-        )
     }
 
 
@@ -271,6 +228,52 @@ impl CanSocket {
         }
 
         Ok(())
+    }
+
+    /// Change socket to non-blocking mode
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        // retrieve current file status flags
+        let old_flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+
+        if old_flags == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let new_flags = if nonblocking {
+            old_flags | libc::O_NONBLOCK
+        } else {
+            old_flags & !libc::O_NONBLOCK
+        };
+
+        let r = unsafe { libc::fcntl(self.fd, libc::F_SETFL, new_flags) };
+
+        if r != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// Set the read timeout on the socket
+    ///
+    /// For convenience, the result value can be checked using
+    /// `ShouldRetry::should_retry` when a timeout is set.
+    pub fn set_read_timeout(&self, duration: time::Duration) -> io::Result<()> {
+        util::set_socket_option(
+            self.fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &util::timeval_from_duration(duration)
+        )
+    }
+
+    /// Set the write timeout on the socket
+    pub fn set_write_timeout(&self, duration: time::Duration) -> io::Result<()> {
+        util::set_socket_option(
+            self.fd,
+            libc::SOL_SOCKET,
+            libc::SO_SNDTIMEO,
+            &util::timeval_from_duration(duration)
+        )
     }
 
     /// Sets filters on the socket.
