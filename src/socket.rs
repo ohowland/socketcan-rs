@@ -45,7 +45,6 @@ extern crate libc;
 extern crate nix;
 extern crate itertools;
 extern crate byte_conv;
-extern crate netlink_rs;
 
 mod errors;
 mod util;

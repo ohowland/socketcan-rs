@@ -15,50 +15,49 @@
 //! deficiencies. If those are not fixed, a reimplmentation of netlink-rs'
 //! functionality might be required.
 
-use byte_conv::As as AsBytes;
-use libc::{self, c_char, c_ushort, c_int, c_uint};
+//use byte_conv::As as AsBytes;
 use netlink_rs::socket::{Msg as NetlinkMessage, Socket as NetlinkSocket, NetlinkAddr,
                          Payload as NetlinkPayload, NlMsgHeader};
 use netlink_rs::Protocol as NetlinkProtocol;
 use nix;
-use nix::net::if_::if_nametoindex;
+//use nix::net::if_::if_nametoindex;
 use std::{mem, io};
 
 // linux/rtnetlink.h
 const RTM_NEWLINK: u16 = 16;
 
 // linux/socket.h
-const AF_UNSPEC: c_char = 0;
+const AF_UNSPEC: libc::c_char = 0;
 
 // linux/if.h; netdevice(7)
-const IFF_UP: c_uint = 1;
+const IFF_UP: libc::c_uint = 1;
 
 /// Mirrors the `struct ifinfomsg` (see rtnetlink(7))
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct IfInfoMsg {
     /// Address family, should always be `AF_UNSPEC`
-    family: c_char,
+    family: libc::c_char,
 
     /// Padding bytes, should be set to 0.
-    _pad: c_char, // must be 0
+    _pad: libc::c_char, // must be 0
 
     /// Device type (FIXME: ?)
-    dev_type: c_ushort,
+    dev_type: libc::c_ushort,
 
     /// The interface index, can be retrieved using `if_nametoindex` from the
     /// `nix` crate.
-    index: c_int,
+    index: libc::c_int,
 
     /// Device flags (FIXME: ?)
-    flags: c_uint,
+    flags: libc::c_uint,
 
     /// Change mask
-    change: c_uint,
+    change: libc::c_uint,
 }
 
 impl IfInfoMsg {
-    fn new(if_index: i32, flags: c_uint, change: c_uint) -> IfInfoMsg {
+    fn new(if_index: i32, flags: libc::c_uint, change: libc::c_uint) -> IfInfoMsg {
         IfInfoMsg {
             family: AF_UNSPEC,
             _pad: 0,
@@ -76,9 +75,9 @@ impl IfInfoMsg {
 
 /// Sends a netlink message down a netlink socket, and checks if an ACK was
 /// properly received.
-fn send_and_read_ack(sock: &mut NetlinkSocket,
-                     msg: NetlinkMessage,
-                     dest: &NetlinkAddr)
+fn send_and_read_ack(sock: &mut netlink_rs::socket::NetlinkSocket,
+                     msg: netlink_rs::socket::NetlinkMessage,
+                     dest: &netlink_rs::socket::NetlinkAddr)
                      -> io::Result<()> {
 
     let msg_len = msg.header().msg_length() as usize;
@@ -141,7 +140,7 @@ fn open_nl_route_socket() -> io::Result<NetlinkSocket> {
 /// Controlled through the kernel's netlink interface, CAN devices can be
 /// brought up or down or configured through this.
 pub struct CanInterface {
-    if_index: c_uint,
+    if_index: libc::c_uint,
 }
 
 impl CanInterface {
@@ -149,7 +148,7 @@ impl CanInterface {
     ///
     /// Similar to `open_if`, but looks up the device by name instead
     pub fn open(ifname: &str) -> Result<CanInterface, nix::Error> {
-        let if_index = if_nametoindex(ifname)?;
+        let if_index = nix::net::if_::if_nametoindex(ifname)?;
         Ok(CanInterface::open_if(if_index))
     }
 
@@ -157,7 +156,7 @@ impl CanInterface {
     ///
     /// Creates a new `CanInterface` instance. No actual "opening" is necessary
     /// or performed when calling this function.
-    pub fn open_if(if_index: c_uint) -> CanInterface {
+    pub fn open_if(if_index: libc::c_uint) -> CanInterface {
         CanInterface { if_index: if_index }
     }
 
@@ -168,7 +167,7 @@ impl CanInterface {
         let mut nl = open_nl_route_socket()?;
 
         // prepare message
-        let mut header = NlMsgHeader::user_defined(RTM_NEWLINK, mem::size_of::<IfInfoMsg>() as u32);
+        let mut header = netlink::NlMsgHeader::user_defined(RTM_NEWLINK, mem::size_of::<IfInfoMsg>() as u32);
         header.ack();
 
         // settings flags to 0 and change to IFF_UP will disable the IFF_UP flag
