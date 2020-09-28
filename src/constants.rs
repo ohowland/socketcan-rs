@@ -16,22 +16,21 @@ pub const CAN_RAW_JOIN_FILTERS: libc::c_int = 6;
 // get timestamp from ioctl in a struct timespec (ns accuracy)
 pub const SIOCGSTAMPNS: libc::c_int = 0x8907;
 
-/// Indicate 29 bit extended format
+/// Special address description flags for the CAN_ID
+///
+/// EFF/SFF is set in the MSB
 pub const EFF_FLAG: u32 = 0x80000000;
-
-/// remote transmission request flag
+/// remote transmission request
 pub const RTR_FLAG: u32 = 0x40000000;
-
-/// error flag
+/// error message frame
 pub const ERR_FLAG: u32 = 0x20000000;
 
-/// valid bits in standard frame id
+/// valid bits in CAN ID for frame formats
+/// standard frame format (SFF)
 pub const SFF_MASK: u32 = 0x000007ff;
-
-/// valid bits in extended frame id
+/// extended frame format (EFF)
 pub const EFF_MASK: u32 = 0x1fffffff;
-
-/// valid bits in error frame
+/// omit EFF, RTR, ERR flags
 pub const ERR_MASK: u32 = 0x1fffffff;
 
 // an error mask that will cause SocketCAN to report all errors
