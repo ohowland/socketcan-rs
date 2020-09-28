@@ -48,8 +48,6 @@ pub extern crate byte_conv;
 pub extern crate log;
 
 mod constants;
-pub use constants::*;
-
 mod errors;
 mod util;
 mod frame;

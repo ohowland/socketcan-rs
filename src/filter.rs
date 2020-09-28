@@ -1,3 +1,5 @@
+use errors::ConstructionError;
+
 /// CanFilter
 ///
 /// Contains an internal id and mask. Packets are considered to be matched by

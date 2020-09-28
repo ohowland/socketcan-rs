@@ -1,4 +1,4 @@
-use CanSocket;
+use socket::CanSocket;
 
 #[test]
 fn test_nonexistant_device() {

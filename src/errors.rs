@@ -1,8 +1,9 @@
+use frame::CanFrame;
+
 // information from https://raw.githubusercontent.com/torvalds/linux/master/
 //                  /include/uapi/linux/can/error.h
 
 use std::convert::TryFrom;
-use super::CanFrame;
 use std::{error, fmt};
 
 #[derive(Debug)]
