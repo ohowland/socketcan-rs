@@ -50,8 +50,8 @@ pub extern crate log;
 mod constants;
 mod errors;
 mod util;
-mod frame;
-mod socket;
+pub mod frame;
+pub mod socket;
 mod filter;
 
 #[cfg(test)]

@@ -2,7 +2,8 @@ extern crate socketcan;
 extern crate log;
 extern crate env_logger;
 
-use socketcan::{CanSocket, CanFrame};
+use socketcan::frame::CanFrame;
+use socketcan::socket::CanSocket;
 
 fn main() {
     env_logger::init();    

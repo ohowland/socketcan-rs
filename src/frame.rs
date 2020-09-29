@@ -1,6 +1,7 @@
 use std::fmt;
 use errors::{ConstructionError, CanError, CanErrorDecodingFailure};
 use constants::*;
+use itertools::Itertools;
 
 /// CanFrame
 ///
@@ -40,7 +41,6 @@ impl CanFrame {
             _id |= EFF_FLAG;
         }
 
-
         if rtr {
             _id |= RTR_FLAG;
         }
@@ -64,6 +64,10 @@ impl CanFrame {
                _res1: 0,
                _data: full_data,
            })
+    }
+
+    pub fn empty() -> CanFrame {
+        CanFrame::new(0, &[0; 8], false, false).unwrap()
     }
 
     /// Return the actual CAN ID (without EFF/RTR/ERR flags)

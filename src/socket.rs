@@ -1,10 +1,12 @@
-use std::{fmt, mem, io, time};
+use std::{mem, io, time};
 use log::debug;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use frame::CanFrame;
+use filter::CanFilter;
 use util::{set_socket_option, set_socket_option_mult, system_time_from_timespec, timeval_from_duration};
 use errors::CanSocketOpenError;
+use constants::*;
 
 /// A socket for a CAN device.
 ///
@@ -40,7 +42,7 @@ impl CanSocket {
     /// Open CAN device by interface number.
     ///
     /// Opens a CAN device by kernel interface number.
-    pub fn open_interface(if_index: libc::c_uint) -> Result<CanSocket, CanSocketOpenError> {
+    fn open_interface(if_index: libc::c_uint) -> Result<CanSocket, CanSocketOpenError> {
         match CanSocket::open_socket() {
             Ok(fd) => CanSocket::bind_socket(if_index, fd), 
             Err(e) => Err(e),
@@ -116,7 +118,7 @@ impl CanSocket {
         let mut ts = mem::MaybeUninit::<libc::timespec>::uninit();
         let r = unsafe { 
             libc::ioctl(self.fd,
-                        SIOCGSTAMPNS as libc::c_ulong,
+                        SIOCGSTAMP as libc::c_ulong,
                         ts.as_mut_ptr())
         };
 
@@ -126,19 +128,12 @@ impl CanSocket {
 
         let ts = unsafe { ts.assume_init() };
         
-        Ok(util::system_time_from_timespec(ts))
+        Ok(system_time_from_timespec(ts))
     }
     
     /// Blocking read a single can frame.
     fn read_socket(&self) -> io::Result<CanFrame> {
-        let mut frame = CanFrame {
-            _id: 0,
-            _data_len: 0,
-            _pad: 0,
-            _res0: 0,
-            _res1: 0,
-            _data: [0; 8],
-        };
+        let mut frame = CanFrame::empty();
 
         let r = unsafe {
             let frame_ptr = &mut frame as *mut CanFrame;
@@ -198,21 +193,21 @@ impl CanSocket {
     /// For convenience, the result value can be checked using
     /// `ShouldRetry::should_retry` when a timeout is set.
     pub fn set_read_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        util::set_socket_option(
+        set_socket_option(
             self.fd,
             libc::SOL_SOCKET,
             libc::SO_RCVTIMEO,
-            &util::timeval_from_duration(duration)
+            &timeval_from_duration(duration)
         )
     }
 
     /// Set the write timeout on the socket
     pub fn set_write_timeout(&self, duration: time::Duration) -> io::Result<()> {
-        util::set_socket_option(
+        set_socket_option(
             self.fd,
             libc::SOL_SOCKET,
             libc::SO_SNDTIMEO,
-            &util::timeval_from_duration(duration)
+            &timeval_from_duration(duration)
         )
     }
 
@@ -224,7 +219,7 @@ impl CanSocket {
     /// See `CanFilter` for details on how filtering works. By default, all
     /// single filter matching all incoming frames is installed.
     pub fn set_filters(&self, filters: &[CanFilter]) -> io::Result<()> {
-        util::set_socket_option_mult(self.fd, SOL_CAN_RAW, CAN_RAW_FILTER, filters)
+        set_socket_option_mult(self.fd, SOL_CAN_RAW, CAN_RAW_FILTER, filters)
     }
 
     /// Sets the error mask on the socket.
@@ -235,7 +230,7 @@ impl CanSocket {
     /// socket to receive notification about the specified conditions.
     #[inline]
     pub fn set_error_mask(&self, mask: u32) -> io::Result<()> {
-        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &mask)
+        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &mask)
     }
 
     /// Enable or disable loopback.
@@ -249,7 +244,7 @@ impl CanSocket {
             true => 1,
             false => 0,
         };
-        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback)
+        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback)
     }
 
     /// Enable or disable receiving of own frames.
@@ -261,7 +256,7 @@ impl CanSocket {
             true => 1,
             false => 0,
         };
-        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own_msgs)
+        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own_msgs)
     }
 
     /// Enable or disable join filters.
@@ -274,7 +269,7 @@ impl CanSocket {
             true => 1,
             false => 0,
         };
-        util::set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_JOIN_FILTERS, &join_filters)
+        set_socket_option(self.fd, SOL_CAN_RAW, CAN_RAW_JOIN_FILTERS, &join_filters)
     }
 }
 

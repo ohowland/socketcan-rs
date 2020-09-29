@@ -21,3 +21,6 @@ vcan_tests = []
 
 [[example]]
 name = "write_once"
+
+[[example]]
+name = "read_once"

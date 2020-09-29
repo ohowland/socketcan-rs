@@ -18,7 +18,6 @@ use std::{io, ptr, mem, time};
 /// Note that the `val` parameter must be specified correctly; if an option
 /// expects an integer, it is advisable to pass in a `c_int`, not the default
 /// of `i32`.
-#[inline]
 pub fn set_socket_option<T>(fd: libc::c_int, 
                             level: libc::c_int, 
                             name: libc::c_int, 
@@ -69,7 +68,6 @@ pub fn set_socket_option_mult<T>(fd: libc::c_int,
     Ok(())
 }
 
-#[inline]
 pub fn timeval_from_duration(t: std::time::Duration) -> libc::timeval {
     libc::timeval {
         tv_sec: t.as_secs() as libc::time_t,
@@ -77,12 +75,10 @@ pub fn timeval_from_duration(t: std::time::Duration) -> libc::timeval {
     }
 }
 
-#[inline]
 pub fn duration_from_timespec(ts: libc::timespec) -> time::Duration {
     time::Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
 }
 
-#[inline]
 pub fn system_time_from_timespec(ts: libc::timespec) -> time::SystemTime {
     time::UNIX_EPOCH + duration_from_timespec(ts)
 }

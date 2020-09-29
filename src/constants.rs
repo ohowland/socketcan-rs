@@ -14,7 +14,8 @@ pub const CAN_RAW_JOIN_FILTERS: libc::c_int = 6;
 // const CAN_RAW_FD_FRAMES: c_int = 5;
 
 // get timestamp from ioctl in a struct timespec (ns accuracy)
-pub const SIOCGSTAMPNS: libc::c_int = 0x8907;
+//pub const SIOCGSTAMPNS: libc::c_int = 0x8907;
+pub const SIOCGSTAMP: libc::c_int = 0x8906;
 
 /// Special address description flags for the CAN_ID
 ///
